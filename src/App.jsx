@@ -440,12 +440,12 @@ export default function App() {
                             </>
                         )}
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 pb-2 xl:pb-0 w-full xl:w-auto justify-center xl:justify-end">
+                    <div className="flex overflow-x-auto hide-scrollbar items-center gap-2 pb-2 xl:pb-0 w-full xl:w-auto justify-start xl:justify-end">
                         {['take', 'scan', 'ai', 'cards', 'students', 'subjects', 'history'].map(v => (
-                            <button key={v} onClick={() => setView(v)} className={`px-3 py-2 rounded-md text-sm font-medium capitalize whitespace-nowrap ${view === v ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>{v}</button>
+                            <button key={v} onClick={() => setView(v)} className={`px-3 py-2 rounded-md text-sm shrink-0 font-medium capitalize whitespace-nowrap ${view === v ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>{v}</button>
                         ))}
-                        <button onClick={() => setShowSettings(true)} className="text-slate-400 hover:text-white p-2" title="Settings"><Settings size={20} /></button>
-                        <button onClick={handleLogout} className="text-rose-400 hover:text-rose-500 hover:bg-white/10 p-2 rounded-lg transition-colors ml-2 font-bold flex items-center justify-center gap-2 text-sm" title="Sign Out">Sign Out</button>
+                        <button onClick={() => setShowSettings(true)} className="text-slate-400 hover:text-white p-2 shrink-0" title="Settings"><Settings size={20} /></button>
+                        <button onClick={handleLogout} className="text-rose-400 hover:text-rose-500 hover:bg-white/10 p-2 rounded-lg shrink-0 transition-colors ml-2 font-bold flex items-center justify-center gap-2 text-sm" title="Sign Out">Sign Out</button>
                     </div>
                 </div>
             </nav>
