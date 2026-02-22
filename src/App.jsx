@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { marked } from 'marked';
 import QRCode from 'qrcode';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { auth, db } from './firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -597,12 +599,15 @@ function LoginScreen() {
     return (
         <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
             <div className="bg-white max-w-md w-full rounded-2xl shadow-2xl overflow-hidden">
-                <div className="bg-indigo-600 p-8 text-center">
-                    <div className="bg-white/20 p-4 rounded-full w-20 h-20 mx-auto flex items-center justify-center mb-4">
-                        <Users size={40} className="text-white" />
+                <div className="bg-indigo-600 p-8 text-center" style={{ backgroundImage: "url('/r-logo.jpg')", backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
+                    <div className="absolute inset-0 bg-indigo-900/80 backdrop-blur-sm"></div>
+                    <div className="relative z-10">
+                        <div className="bg-white/10 border border-white/20 p-2 rounded-2xl w-24 h-24 mx-auto flex items-center justify-center mb-4 shadow-xl overflow-hidden shadow-indigo-900/50">
+                            <img src="/r-logo.jpg" alt="Classitra Logo" className="w-full h-full object-cover rounded-xl" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-white tracking-tight">MU's Classitra</h2>
+                        <p className="text-indigo-200 text-sm mt-1 font-medium">Cloud Attendance System</p>
                     </div>
-                    <h2 className="text-2xl font-bold text-white tracking-tight">MU's Classitra</h2>
-                    <p className="text-indigo-200 text-sm mt-1">Cloud Attendance System</p>
                 </div>
 
                 <div className="p-8">
@@ -917,8 +922,11 @@ function AIAssistantView({ students, apiKey, handleAICommand, onVoiceCommand, ac
                         const status = attendanceHistory[currentKey]?.[student.id];
                         return (
                             <div key={student.id} className={`flex items-center justify-between p-3 rounded-xl border bg-white ${activeRollCallIndex === index ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-slate-100'}`}>
-                                <div className="flex items-center gap-4"><span className="font-mono text-lg font-bold w-16 text-slate-900">{student.rollNumber}</span><span className="font-medium text-slate-700">{student.name}</span></div>
-                                {status && status !== 'absent' && <span className={`text-xs font-bold px-2 py-1 rounded uppercase ${status === 'present' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{status}</span>}
+                                <div className="flex items-center gap-4 flex-1 min-w-0">
+                                    <span className="font-mono text-lg font-bold w-12 sm:w-16 shrink-0 text-slate-900">{student.rollNumber}</span>
+                                    <span className="font-medium text-slate-700 truncate">{student.name}</span>
+                                </div>
+                                {status && status !== 'absent' && <span className={`shrink-0 text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider shadow-sm ml-2 ${status === 'present' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-amber-100 text-amber-700 border border-amber-200'}`}>{status}</span>}
                             </div>
                         );
                     })}
@@ -958,14 +966,80 @@ function HistoryView({ apiKey, callGemini, attendanceHistory, students, subject,
         setLoading(false);
     };
 
+    const downloadPDF = () => {
+        try {
+            const doc = new jsPDF();
+            const searchKey = `_${subject.replace(/[^a-zA-Z0-9]/g, '_')}_theory`;
+            const dates = Object.keys(attendanceHistory).filter(k => k.includes(searchKey)).map(k => k.split('_')[0]).sort();
+            const uniqueDates = [...new Set(dates)];
+
+            // Header Info
+            doc.setFontSize(20);
+            doc.setTextColor(15, 23, 42); // slate-900
+            doc.text("MU's Classitra - Attendance Report", 14, 22);
+
+            doc.setFontSize(11);
+            doc.setTextColor(100, 116, 139); // slate-500
+            doc.text(`Subject: ${subject}`, 14, 32);
+            doc.text(`Coordinator: ${coordinator || 'N/A'}`, 14, 38);
+            doc.text(`Division: ${division || 'N/A'}`, 100, 32);
+            doc.text(`Room: ${room || 'N/A'}`, 100, 38);
+            doc.text(`Lecture Timings: ${timings || 'N/A'}`, 14, 44);
+            doc.text(`Generated: ${new Date().toLocaleDateString()}`, 100, 44);
+
+            // Table Data Assembly
+            const tableCols = ["Roll No", "Student Name", "Batch", ...uniqueDates, "Total", "Rate"];
+            const tableRows = students.map(student => {
+                let presentCount = 0;
+                const dailyStatuses = uniqueDates.map(date => {
+                    const status = attendanceHistory[`${date}_${subject.replace(/[^a-zA-Z0-9]/g, '_')}_theory`]?.[student.id] || '-';
+                    if (status === 'present') { presentCount++; return 'P'; }
+                    if (status === 'late') { return 'L'; }
+                    if (status === 'absent') { return 'A'; }
+                    return '-';
+                });
+                const percentage = Math.round((presentCount / (uniqueDates.length || 1)) * 100);
+                return [student.rollNumber.toString(), student.name, student.batch, ...dailyStatuses, presentCount.toString(), `${percentage}%`];
+            });
+
+            // Draw Table
+            autoTable(doc, {
+                startY: 52,
+                head: [tableCols],
+                body: tableRows,
+                theme: 'grid',
+                headStyles: { fillColor: [79, 70, 229] }, // indigo-600
+                styles: { fontSize: 8, cellPadding: 2 },
+                columnStyles: {
+                    0: { fontStyle: 'bold' },
+                    1: { cellWidth: 35 }
+                },
+                didParseCell: function (data) {
+                    if (data.section === 'body' && data.column.index > 2 && data.column.index < tableCols.length - 2) {
+                        const val = data.cell.raw;
+                        if (val === 'P') data.cell.styles.textColor = [16, 185, 129]; // emerald-500
+                        else if (val === 'A') data.cell.styles.textColor = [244, 63, 94]; // rose-500
+                        else if (val === 'L') data.cell.styles.textColor = [245, 158, 11]; // amber-500
+                    }
+                }
+            });
+
+            doc.save(`Classitra_${subject.replace(/\s+/g, '_')}.pdf`);
+        } catch (err) {
+            console.error("PDF generation failed", err);
+            alert("Could not generate PDF.");
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="bg-white p-6 rounded-xl shadow border flex-col flex justify-between gap-6">
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b pb-4">
                     <h2 className="text-xl font-bold">Class Reports: {subject}</h2>
-                    <div className="flex gap-2 w-full lg:w-auto">
-                        <button onClick={() => onDownload(coordinator, division, timings, room)} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg font-bold shadow hover:bg-slate-700"><Download size={18} /> Classic Register</button>
-                        <button onClick={generateReport} disabled={loading} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-6 py-2 rounded-lg font-bold shadow hover:shadow-lg transition-all">
+                    <div className="flex flex-wrap gap-2 w-full lg:w-auto">
+                        <button onClick={() => onDownload(coordinator, division, timings, room)} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-slate-100 text-slate-700 hover:text-slate-900 px-4 py-2 rounded-lg font-bold shadow-sm hover:bg-slate-200 transition-colors"><Download size={18} /> CSV</button>
+                        <button onClick={downloadPDF} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-red-500 text-white px-4 py-2 rounded-lg font-bold shadow hover:bg-red-600 transition-colors"><Download size={18} /> PDF Report</button>
+                        <button onClick={generateReport} disabled={loading} className="w-full mt-2 lg:mt-0 lg:w-auto lg:flex-none flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-6 py-2 rounded-lg font-bold shadow hover:shadow-lg transition-all">
                             {loading ? <div className="animate-spin w-4 h-4 border-2 border-white/30 border-l-white rounded-full"></div> : <Sparkles size={18} />}
                             {loading ? 'Analyzing...' : 'Generate AI Report'}
                         </button>
