@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .hero-bg-custom {
+    background-color: #f8fafc;
+    background-image: radial-gradient(circle at top right, #e2e8f0 0%, transparent 40%),
+      radial-gradient(circle at bottom left, #e2e8f0 0%, transparent 40%);
+  }
+
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    /* IE and Edge */
+    scrollbar-width: none;
+    /* Firefox */
+  }
+}
