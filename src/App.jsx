@@ -922,8 +922,8 @@ function AIAssistantView({ students, apiKey, handleAICommand, onVoiceCommand, ac
                         const status = attendanceHistory[currentKey]?.[student.id];
                         return (
                             <div key={student.id} className={`flex items-center justify-between p-3 rounded-xl border bg-white ${activeRollCallIndex === index ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-slate-100'}`}>
-                                <div className="flex items-center gap-4 flex-1 min-w-0">
-                                    <span className="font-mono text-lg font-bold w-12 sm:w-16 shrink-0 text-slate-900">{student.rollNumber}</span>
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                    <span className="font-mono text-sm sm:text-base font-bold shrink-0 text-slate-900 bg-slate-100 px-2 py-1 rounded-md">{student.rollNumber}</span>
                                     <span className="font-medium text-slate-700 truncate">{student.name}</span>
                                 </div>
                                 {status && status !== 'absent' && <span className={`shrink-0 text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider shadow-sm ml-2 ${status === 'present' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-amber-100 text-amber-700 border border-amber-200'}`}>{status}</span>}
