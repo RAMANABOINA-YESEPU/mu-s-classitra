@@ -7,6 +7,9 @@ import {
 } from 'lucide-react';
 import { marked } from 'marked';
 import QRCode from 'qrcode';
+import { auth, db } from './firebase';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 // --- GEMINI AI SERVICE ---
 const callGemini = async (prompt, apiKey) => {
@@ -43,6 +46,10 @@ export default function App() {
     const [searchQuery, setSearchQuery] = useState('');
     const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
     const [showSettings, setShowSettings] = useState(false);
+
+    // --- Authentication State ---
+    const [user, setUser] = useState(null);
+    const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
     // Guided Roll Call State
     const [activeRollCallIndex, setActiveRollCallIndex] = useState(-1);
@@ -81,33 +88,62 @@ export default function App() {
     const keyLabA = `${currentDate}_${safeSubject}_labA`;
     const keyLabB = `${currentDate}_${safeSubject}_labB`;
 
-    // --- Persistence Effects ---
-
-    // 1. Save changes to LocalStorage whenever history changes (Auto-Save)
+    // --- Authentication Listener ---
     useEffect(() => {
-        localStorage.setItem('class_attendance', JSON.stringify(attendanceHistory));
-    }, [attendanceHistory]);
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+            if (currentUser) {
+                setUser(currentUser);
+                // Fetch user data from Firestore
+                try {
+                    const docRef = doc(db, 'users', currentUser.uid);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        if (data.subjects) setSubjects(data.subjects);
+                        if (data.students) setStudents(data.students);
+                        if (data.attendanceHistory) setAttendanceHistory(data.attendanceHistory);
+                    }
+                } catch (err) {
+                    console.error("Error fetching user data:", err);
+                }
+            } else {
+                setUser(null);
+                // Blank out state on logout
+                setSubjects(['General Class', 'Mathematics', 'Physics', 'Chemistry']);
+                setStudents([]);
+                setAttendanceHistory({});
+            }
+            setIsCheckingAuth(false);
+        });
+        return unsubscribe;
+    }, []);
 
-    useEffect(() => {
-        localStorage.setItem('class_students', JSON.stringify(students));
-    }, [students]);
+    // --- Persistence Effects (Firestore Sync) ---
 
+    // Auto-save to Firestore whenever main states change (Debounced to avoid spam)
     useEffect(() => {
-        localStorage.setItem('class_subjects', JSON.stringify(subjects));
-    }, [subjects]);
+        if (!user || isCheckingAuth) return;
 
+        const saveDataToCloud = async () => {
+            try {
+                await setDoc(doc(db, 'users', user.uid), {
+                    subjects,
+                    students,
+                    attendanceHistory
+                }, { merge: true });
+            } catch (err) {
+                console.error("Failed to sync with cloud:", err);
+            }
+        };
+
+        const timeoutId = setTimeout(saveDataToCloud, 1000); // Debounce 1s
+        return () => clearTimeout(timeoutId);
+    }, [subjects, students, attendanceHistory, user, isCheckingAuth]);
+
+    // LocalStorage for API key only
     useEffect(() => {
-        localStorage.setItem('gemini_api_key', apiKey);
+
     }, [apiKey]);
-
-    // Added persistent storage effects for Students & Subjects
-    useEffect(() => {
-        localStorage.setItem('class_subjects', JSON.stringify(subjects));
-    }, [subjects]);
-
-    useEffect(() => {
-        localStorage.setItem('class_students', JSON.stringify(students));
-    }, [students]);
 
     // 2. Initialize Empty Days (Data Consistency)
     useEffect(() => {
@@ -347,6 +383,20 @@ export default function App() {
         );
     };
 
+    if (isCheckingAuth) {
+        return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white"><div className="animate-spin w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full"></div></div>;
+    }
+
+    if (!user) {
+        return <LoginScreen />;
+    }
+
+    const handleLogout = () => {
+        if (confirm("Are you sure you want to sign out?")) {
+            signOut(auth);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col relative">
             {/* Settings Modal */}
@@ -392,7 +442,8 @@ export default function App() {
                         {['take', 'scan', 'ai', 'cards', 'students', 'subjects', 'history'].map(v => (
                             <button key={v} onClick={() => setView(v)} className={`px-3 py-2 rounded-md text-sm font-medium capitalize whitespace-nowrap ${view === v ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>{v}</button>
                         ))}
-                        <button onClick={() => setShowSettings(true)} className="text-slate-400 hover:text-white p-2"><Settings size={20} /></button>
+                        <button onClick={() => setShowSettings(true)} className="text-slate-400 hover:text-white p-2" title="Settings"><Settings size={20} /></button>
+                        <button onClick={handleLogout} className="text-rose-400 hover:text-rose-500 hover:bg-white/10 p-2 rounded-lg transition-colors ml-2 font-bold flex items-center justify-center gap-2 text-sm" title="Sign Out">Sign Out</button>
                     </div>
                 </div>
             </nav>
@@ -510,12 +561,88 @@ export default function App() {
 
             <footer className="bg-slate-900 text-slate-400 py-6 text-center text-sm mt-auto no-print border-t border-slate-800">
                 <p>&copy; {new Date().getFullYear()} Classitra. All rights belong to <span className="text-slate-200 font-semibold">RAMANABOINA YESEPU</span>.</p>
+                <p className="text-xs text-slate-600 mt-2">Logged in as {user.email}</p>
             </footer>
         </div>
     );
 }
 
 // --- Sub-Components ---
+
+function LoginScreen() {
+    const [isLogin, setIsLogin] = useState(true);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState(null);
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError(null);
+        setLoading(true);
+
+        try {
+            if (isLogin) {
+                await signInWithEmailAndPassword(auth, email, password);
+            } else {
+                await createUserWithEmailAndPassword(auth, email, password);
+            }
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+            <div className="bg-white max-w-md w-full rounded-2xl shadow-2xl overflow-hidden">
+                <div className="bg-indigo-600 p-8 text-center">
+                    <div className="bg-white/20 p-4 rounded-full w-20 h-20 mx-auto flex items-center justify-center mb-4">
+                        <Users size={40} className="text-white" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-white tracking-tight">MU's Classitra</h2>
+                    <p className="text-indigo-200 text-sm mt-1">Cloud Attendance System</p>
+                </div>
+
+                <div className="p-8">
+                    <h3 className="text-xl font-bold text-slate-800 mb-6 text-center">{isLogin ? 'Welcome Back' : 'Create Teacher Account'}</h3>
+
+                    {error && (
+                        <div className="bg-rose-50 text-rose-600 p-3 rounded-lg text-sm mb-6 flex items-start gap-2 border border-rose-100">
+                            <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+                            <span>{error.replace('Firebase:', '').trim()}</span>
+                        </div>
+                    )}
+
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-semibold text-slate-600 mb-1">Email Address</label>
+                            <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 transition-all" placeholder="teacher@university.edu" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-semibold text-slate-600 mb-1">Password</label>
+                            <input type="password" required value={password} minLength={6} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 transition-all" placeholder="Min 6 characters" />
+                        </div>
+
+                        <button type="submit" disabled={loading} className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition-colors shadow-lg mt-4 flex items-center justify-center gap-2">
+                            {loading ? <div className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full"></div> : (isLogin ? 'Sign In Securely' : 'Create Account')}
+                        </button>
+                    </form>
+
+                    <div className="mt-8 text-center">
+                        <p className="text-slate-500 text-sm">
+                            {isLogin ? "Don't have an account?" : "Already have an account?"}
+                            <button onClick={() => { setIsLogin(!isLogin); setError(null); }} className="text-indigo-600 font-bold ml-1 hover:underline outline-none">
+                                {isLogin ? 'Sign Up' : 'Sign In'}
+                            </button>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 function ScannerView({ students, onScan, currentSubject }) {
     const [scanMode, setScanMode] = useState('theory');
