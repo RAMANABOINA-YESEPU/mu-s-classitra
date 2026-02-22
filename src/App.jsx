@@ -381,7 +381,7 @@ export default function App() {
         };
         const { color, label } = config[status || 'absent'];
         return (
-            <button onClick={onClick} className={`${color} w-8 h-8 mx-auto rounded-full font-bold text-xs shadow-md transition-all hover:scale-110 active:scale-95 flex items-center justify-center`}>{label}</button>
+            <button onClick={onClick} disabled={disabled} className={`${color} w-6 h-6 sm:w-8 sm:h-8 mx-auto rounded-full font-bold text-[10px] sm:text-xs shadow-md transition-all hover:scale-110 active:scale-95 flex items-center justify-center disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed`}>{label}</button>
         );
     };
 
@@ -499,29 +499,29 @@ export default function App() {
                                 <table className="w-full text-left border-collapse">
                                     <thead className="bg-slate-50 border-b border-slate-200">
                                         <tr>
-                                            <th className="px-4 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-16 text-center">Sr No</th>
-                                            <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-24">Roll No</th>
-                                            <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Student Name</th>
-                                            <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase text-center w-24">Batch</th>
-                                            {(sessionFilter === 'all' || sessionFilter === 'theory') && <th className="px-4 py-4 text-xs font-bold text-indigo-700 uppercase tracking-wider text-center bg-indigo-50 border-l border-indigo-100 w-32">Theory</th>}
-                                            {(sessionFilter === 'all' || sessionFilter === 'labA') && <th className="px-4 py-4 text-xs font-bold text-teal-700 uppercase tracking-wider text-center bg-teal-50 border-l border-teal-100 w-32">Lab A</th>}
-                                            {(sessionFilter === 'all' || sessionFilter === 'labB') && <th className="px-4 py-4 text-xs font-bold text-purple-700 uppercase tracking-wider text-center bg-purple-50 border-l border-purple-100 w-32">Lab B</th>}
+                                            <th className="px-1 sm:px-4 py-3 sm:py-4 text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider text-center">Sr No</th>
+                                            <th className="px-1 sm:px-6 py-3 sm:py-4 text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Roll No</th>
+                                            <th className="px-1 sm:px-6 py-3 sm:py-4 text-[10px] sm:text-xs font-semibold text-slate-500 uppercase">Name</th>
+                                            <th className="px-1 sm:px-6 py-3 sm:py-4 text-[10px] sm:text-xs font-semibold text-slate-500 uppercase text-center hidden sm:table-cell">Batch</th>
+                                            {(sessionFilter === 'all' || sessionFilter === 'theory') && <th className="px-1 sm:px-4 py-3 sm:py-4 text-[10px] sm:text-xs font-bold text-indigo-700 uppercase tracking-wider text-center bg-indigo-50 border-l border-indigo-100">Theory</th>}
+                                            {(sessionFilter === 'all' || sessionFilter === 'labA') && <th className="px-1 sm:px-4 py-3 sm:py-4 text-[10px] sm:text-xs font-bold text-teal-700 uppercase tracking-wider text-center bg-teal-50 border-l border-teal-100">Lab A</th>}
+                                            {(sessionFilter === 'all' || sessionFilter === 'labB') && <th className="px-1 sm:px-4 py-3 sm:py-4 text-[10px] sm:text-xs font-bold text-purple-700 uppercase tracking-wider text-center bg-purple-50 border-l border-purple-100">Lab B</th>}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                         {filteredStudents.map((student, index) => (
                                             <tr key={student.id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-4 py-3 text-center text-sm font-bold text-slate-400 bg-slate-50/50 border-r border-slate-100">{index + 1}</td>
-                                                <td className="px-6 py-3 text-sm font-medium text-slate-600 font-mono">{student.rollNumber}</td>
-                                                <td className="px-6 py-3 text-sm font-bold text-slate-800">{student.name}</td>
-                                                <td className="px-6 py-3 text-center"><span className="bg-slate-100 px-2 py-1 rounded text-xs font-bold text-slate-600 border border-slate-200">{student.batch}</span></td>
-                                                {(sessionFilter === 'all' || sessionFilter === 'theory') && <td className="px-4 py-3 text-center border-l border-slate-100">
+                                                <td className="px-1 sm:px-4 py-2 sm:py-3 text-center text-[10px] sm:text-sm font-bold text-slate-400 bg-slate-50/50 border-r border-slate-100">{index + 1}</td>
+                                                <td className="px-1 sm:px-6 py-2 sm:py-3 text-[10px] sm:text-sm font-medium text-slate-600 font-mono"><div className="truncate w-14 sm:w-auto">{student.rollNumber}</div></td>
+                                                <td className="px-1 sm:px-6 py-2 sm:py-3 text-[10px] sm:text-sm font-bold text-slate-800"><div className="truncate w-16 sm:w-auto">{student.name}</div></td>
+                                                <td className="px-1 sm:px-6 py-2 sm:py-3 text-center hidden sm:table-cell"><span className="bg-slate-100 px-1 py-0.5 sm:px-2 sm:py-1 rounded text-[10px] sm:text-xs font-bold text-slate-600 border border-slate-200">{student.batch}</span></td>
+                                                {(sessionFilter === 'all' || sessionFilter === 'theory') && <td className="px-1 sm:px-4 py-2 sm:py-3 text-center border-l border-slate-100">
                                                     <MiniStatus status={attendanceHistory[keyTheory]?.[student.id]} onClick={() => toggleStatus(student.id, 'theory')} />
                                                 </td>}
-                                                {(sessionFilter === 'all' || sessionFilter === 'labA') && <td className="px-4 py-3 text-center border-l border-slate-100 bg-slate-50/50">
+                                                {(sessionFilter === 'all' || sessionFilter === 'labA') && <td className="px-1 sm:px-4 py-2 sm:py-3 text-center border-l border-slate-100 bg-slate-50/50">
                                                     <MiniStatus status={attendanceHistory[keyLabA]?.[student.id]} onClick={() => toggleStatus(student.id, 'labA')} disabled={student.batch !== 'A'} />
                                                 </td>}
-                                                {(sessionFilter === 'all' || sessionFilter === 'labB') && <td className="px-4 py-3 text-center border-l border-slate-100 bg-slate-50/50">
+                                                {(sessionFilter === 'all' || sessionFilter === 'labB') && <td className="px-1 sm:px-4 py-2 sm:py-3 text-center border-l border-slate-100 bg-slate-50/50">
                                                     <MiniStatus status={attendanceHistory[keyLabB]?.[student.id]} onClick={() => toggleStatus(student.id, 'labB')} disabled={student.batch !== 'B'} />
                                                 </td>}
                                             </tr>
@@ -1173,7 +1173,7 @@ function StudentManager({ students, onAdd, onRemove }) {
                 </form>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <table className="w-full text-left"><thead className="bg-slate-50 border-b border-slate-200"><tr><th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Roll No</th><th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Name</th><th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Batch</th><th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase">Action</th></tr></thead><tbody className="divide-y divide-slate-100">{students.map(s => (<tr key={s.id} className="hover:bg-slate-50"><td className="px-6 py-4 font-mono text-sm text-slate-600">{s.rollNumber}</td><td className="px-6 py-4 font-medium text-slate-800">{s.name}</td><td className="px-6 py-4"><span className="bg-slate-100 px-2 py-1 rounded text-xs font-bold">{s.batch}</span></td><td className="px-6 py-4 text-right"><button onClick={() => onRemove(s.id)} className="text-rose-500 hover:text-rose-700 p-2 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 size={18} /></button></td></tr>))}</tbody></table>
+                <table className="w-full text-left"><thead className="bg-slate-50 border-b border-slate-200"><tr><th className="px-2 sm:px-6 py-2 sm:py-4 text-[10px] sm:text-xs font-semibold text-slate-500 uppercase">Roll No</th><th className="px-2 sm:px-6 py-2 sm:py-4 text-[10px] sm:text-xs font-semibold text-slate-500 uppercase">Name</th><th className="px-2 sm:px-6 py-2 sm:py-4 text-[10px] sm:text-xs font-semibold text-slate-500 uppercase hidden sm:table-cell">Batch</th><th className="px-2 sm:px-6 py-2 sm:py-4 text-right text-[10px] sm:text-xs font-semibold text-slate-500 uppercase w-10">Action</th></tr></thead><tbody className="divide-y divide-slate-100">{students.map(s => (<tr key={s.id} className="hover:bg-slate-50"><td className="px-2 sm:px-6 py-3 sm:py-4 font-mono text-xs sm:text-sm text-slate-600">{s.rollNumber}</td><td className="px-2 sm:px-6 py-3 sm:py-4 font-medium text-xs sm:text-sm text-slate-800"><div className="truncate w-20 sm:w-auto">{s.name}</div></td><td className="px-2 sm:px-6 py-3 sm:py-4 hidden sm:table-cell"><span className="bg-slate-100 px-2 py-1 rounded text-[10px] sm:text-xs font-bold">{s.batch}</span></td><td className="px-2 sm:px-6 py-3 sm:py-4 text-right select-none w-10 shrink-0"><button onClick={() => onRemove(s.id)} className="text-rose-500 hover:text-rose-700 p-2 hover:bg-rose-50 rounded-lg transition-colors shrink-0"><Trash2 size={16} sm:size={18} /></button></td></tr>))}</tbody></table>
             </div>
         </div>
     );

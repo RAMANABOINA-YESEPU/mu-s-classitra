@@ -7,7 +7,7 @@ import App from './App.jsx'
 import { registerSW } from 'virtual:pwa-register'
 
 // Start offline service worker immediately
-registerSW({ immediate: true })
+registerSW()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
