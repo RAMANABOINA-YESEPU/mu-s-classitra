@@ -3,15 +3,16 @@ import {
     Calendar, UserCheck, UserX, Clock, Users, Plus, Trash2, Save,
     BarChart2, QrCode, Download, ScanLine, Printer, Camera, XCircle,
     Beaker, Book, Search, Mic, MicOff, Sparkles, BrainCircuit, TrendingDown,
-    TrendingUp, AlertTriangle, PlayCircle, StopCircle, Volume2, Settings, Wand2, Cloud
+    TrendingUp, AlertTriangle, PlayCircle, StopCircle, Volume2, Settings, Wand2, Cloud, Upload, ImageIcon
 } from 'lucide-react';
 import { marked } from 'marked';
 import QRCode from 'qrcode';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { auth, db } from './firebase';
+import { auth, db, storage } from './firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 
 // --- GEMINI AI SERVICE ---
 const callGemini = async (prompt, apiKey) => {
@@ -291,14 +292,33 @@ export default function App() {
     };
 
     // --- Helpers ---
-    const addStudent = (name, rollNumber, batch) => {
-        const newStudent = { id: Date.now().toString(), name, rollNumber, batch };
+    const addStudent = (name, rollNumber, batch, photoURL = null) => {
+        const newStudent = { id: Date.now().toString() + Math.random().toString(36).substr(2, 5), name, rollNumber, batch, photoURL };
         setStudents([...students, newStudent]);
+    };
+
+    const bulkAddStudents = (newStudentsBatch) => {
+        const processedBatch = newStudentsBatch.map((s, index) => ({
+            id: Date.now().toString() + index.toString() + Math.random().toString(36).substr(2, 5),
+            name: s.name,
+            rollNumber: s.rollNumber,
+            batch: s.batch,
+            photoURL: s.photoURL || null
+        }));
+        setStudents(prev => [...prev, ...processedBatch]);
     };
 
     const removeStudent = (id) => {
         if (confirm('Delete student?')) {
             setStudents(students.filter(s => s.id !== id));
+            // Cleanup attendance for deleted student
+            setAttendanceHistory(prev => {
+                const next = { ...prev };
+                Object.keys(next).forEach(dayKey => {
+                    delete next[dayKey][id];
+                });
+                return next;
+            });
         }
     };
 
@@ -500,6 +520,7 @@ export default function App() {
                                     <thead className="bg-slate-50 border-b border-slate-200">
                                         <tr>
                                             <th className="px-1 sm:px-4 py-3 sm:py-4 text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider text-center">Sr No</th>
+                                            <th className="px-1 py-3 sm:py-4 text-center w-10"></th>
                                             <th className="px-1 sm:px-6 py-3 sm:py-4 text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Roll No</th>
                                             <th className="px-1 sm:px-6 py-3 sm:py-4 text-[10px] sm:text-xs font-semibold text-slate-500 uppercase">Name</th>
                                             <th className="px-1 sm:px-6 py-3 sm:py-4 text-[10px] sm:text-xs font-semibold text-slate-500 uppercase text-center hidden sm:table-cell">Batch</th>
@@ -512,6 +533,7 @@ export default function App() {
                                         {filteredStudents.map((student, index) => (
                                             <tr key={student.id} className="hover:bg-slate-50 transition-colors">
                                                 <td className="px-1 sm:px-4 py-2 sm:py-3 text-center text-[10px] sm:text-sm font-bold text-slate-400 bg-slate-50/50 border-r border-slate-100">{index + 1}</td>
+                                                <td className="px-1 sm:px-2 py-2 sm:py-3 text-center"><div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-slate-200 overflow-hidden mx-auto shadow-sm">{student.photoURL ? <img src={student.photoURL} alt="Avatar" className="w-full h-full object-cover" /> : <UserCheck className="w-4 h-4 sm:w-5 sm:h-5 m-1 sm:m-1.5 text-slate-400" />}</div></td>
                                                 <td className="px-1 sm:px-6 py-2 sm:py-3 text-[10px] sm:text-sm font-medium text-slate-600 font-mono"><div className="truncate w-14 sm:w-auto">{student.rollNumber}</div></td>
                                                 <td className="px-1 sm:px-6 py-2 sm:py-3 text-[10px] sm:text-sm font-bold text-slate-800"><div className="truncate w-16 sm:w-auto">{student.name}</div></td>
                                                 <td className="px-1 sm:px-6 py-2 sm:py-3 text-center hidden sm:table-cell"><span className="bg-slate-100 px-1 py-0.5 sm:px-2 sm:py-1 rounded text-[10px] sm:text-xs font-bold text-slate-600 border border-slate-200">{student.batch}</span></td>
@@ -533,11 +555,16 @@ export default function App() {
                                     {filteredStudents.map((student, index) => (
                                         <div key={student.id} className="p-4 bg-white hover:bg-slate-50 transition-colors">
                                             <div className="flex justify-between items-start mb-4">
-                                                <div className="flex-1 pr-2">
-                                                    <h4 className="text-[18px] font-bold text-slate-900 leading-tight mb-2 uppercase">{student.name}</h4>
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                        <span className="text-sm font-mono font-medium text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">{student.rollNumber}</span>
-                                                        <span className="bg-indigo-50 px-2 py-0.5 rounded-md text-xs font-bold text-indigo-700 border border-indigo-100 shadow-sm">Batch {student.batch}</span>
+                                                <div className="flex gap-3">
+                                                    <div className="w-12 h-12 rounded-full bg-slate-200 overflow-hidden shrink-0 shadow-sm border border-slate-300">
+                                                        {student.photoURL ? <img src={student.photoURL} alt="Avatar" className="w-full h-full object-cover" /> : <UserCheck className="w-7 h-7 m-2.5 text-slate-400" />}
+                                                    </div>
+                                                    <div className="flex-1 pr-2">
+                                                        <h4 className="text-[18px] font-bold text-slate-900 leading-tight mb-2 uppercase break-words">{student.name}</h4>
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <span className="text-sm font-mono font-medium text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">{student.rollNumber}</span>
+                                                            <span className="bg-indigo-50 px-2 py-0.5 rounded-md text-xs font-bold text-indigo-700 border border-indigo-100 shadow-sm">Batch {student.batch}</span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 <div className="text-sm font-bold text-slate-400 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">#{index + 1}</div>
@@ -594,7 +621,7 @@ export default function App() {
                 )}
 
                 {view === 'cards' && <QRCardsView students={students} />}
-                {view === 'students' && <StudentManager students={students} onAdd={addStudent} onRemove={removeStudent} />}
+                {view === 'students' && <StudentManager students={students} onAdd={addStudent} onRemove={removeStudent} onBulkAdd={bulkAddStudents} />}
                 {view === 'subjects' && <SubjectManager subjects={subjects} onAdd={addSubject} onRemove={removeSubject} />}
                 {view === 'history' && <HistoryView apiKey={apiKey} callGemini={callGemini} attendanceHistory={attendanceHistory} students={students} subject={currentSubject} onDownload={downloadReport} />}
             </main>
@@ -1195,31 +1222,113 @@ function SubjectManager({ subjects, onAdd, onRemove }) {
     );
 }
 
-function StudentManager({ students, onAdd, onRemove }) {
+function StudentManager({ students, onAdd, onRemove, onBulkAdd }) {
     const [name, setName] = useState('');
     const [roll, setRoll] = useState('');
     const [batch, setBatch] = useState('A');
+    const [photo, setPhoto] = useState(null);
+    const [uploading, setUploading] = useState(false);
+    const photoInputRef = useRef(null);
+    const csvInputRef = useRef(null);
+
+    const handleCsvUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const csvText = event.target.result;
+            const lines = csvText.split('\n');
+            const newStudents = [];
+            lines.forEach((line, index) => {
+                if (index === 0 && line.toLowerCase().includes('name')) return;
+                const parts = line.split(',');
+                if (parts.length >= 2) {
+                    const n = parts[0].trim();
+                    const r = parts[1].trim();
+                    const b = parts[2] ? parts[2].trim().toUpperCase() : 'A';
+                    if (n && r) newStudents.push({ name: n, rollNumber: r, batch: ['A', 'B'].includes(b) ? b : 'A', photoURL: null });
+                }
+            });
+            if (newStudents.length > 0) {
+                onBulkAdd(newStudents);
+                alert(`Successfully imported ${newStudents.length} students from CSV.`);
+            }
+            if (csvInputRef.current) csvInputRef.current.value = '';
+        };
+        reader.readAsText(file);
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!name || !roll || uploading) return;
+
+        let photoURL = null;
+        if (photo) {
+            setUploading(true);
+            try {
+                const storageRef = ref(storage, `profiles/${Date.now()}_${photo.name}`);
+                await uploadBytesResumable(storageRef, photo);
+                photoURL = await getDownloadURL(storageRef);
+            } catch (error) {
+                console.error("Upload failed", error);
+                alert("Failed to upload photo. Check Firebase Storage rules.");
+            }
+            setUploading(false);
+        }
+
+        onAdd(name, roll, batch, photoURL);
+        setName(''); setRoll(''); setBatch('A'); setPhoto(null);
+        if (photoInputRef.current) photoInputRef.current.value = '';
+    };
+
     return (
-        <div className="max-w-2xl mx-auto space-y-6">
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2"><Plus className="text-indigo-600" size={20} /> Add New Student</h2>
-                <form onSubmit={(e) => { e.preventDefault(); if (name && roll) { onAdd(name, roll, batch); setName(''); setRoll(''); } }} className="flex gap-4 items-end flex-wrap">
-                    <div className="flex-1 min-w-[200px]"><label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label><input required type="text" placeholder="e.g. John Doe" value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:border-indigo-500" /></div>
-                    <div className="w-24"><label className="block text-sm font-medium text-slate-700 mb-1">Roll No</label><input required type="text" placeholder="101" value={roll} onChange={e => setRoll(e.target.value)} className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:border-indigo-500" /></div>
-                    <div className="w-24"><label className="block text-sm font-medium text-slate-700 mb-1">Batch</label><select value={batch} onChange={e => setBatch(e.target.value)} className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:border-indigo-500 bg-white"><option value="A">A</option><option value="B">B</option></select></div>
-                    <button type="submit" className="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors">Add</button>
-                </form>
+        <div className="max-w-4xl mx-auto space-y-6">
+            <div className="flex flex-col md:flex-row gap-6 items-start">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex-1 w-full">
+                    <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2"><Plus className="text-indigo-600" size={20} /> Add New Student</h2>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div className="flex gap-4 items-end flex-wrap">
+                            <div className="flex-1 min-w-[200px]"><label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label><input required type="text" placeholder="e.g. John Doe" value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:border-indigo-500" /></div>
+                            <div className="w-24"><label className="block text-sm font-medium text-slate-700 mb-1">Roll No</label><input required type="text" placeholder="101" value={roll} onChange={e => setRoll(e.target.value)} className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:border-indigo-500" /></div>
+                            <div className="w-24"><label className="block text-sm font-medium text-slate-700 mb-1">Batch</label><select value={batch} onChange={e => setBatch(e.target.value)} className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:border-indigo-500 bg-white"><option value="A">A</option><option value="B">B</option></select></div>
+                        </div>
+                        <div className="flex items-center justify-between gap-4 pt-2">
+                            <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-600 hover:text-indigo-600 border border-slate-300 px-4 py-2.5 rounded-lg hover:border-indigo-500 transition-colors bg-slate-50 w-full sm:w-auto overflow-hidden">
+                                <ImageIcon size={18} className="shrink-0" /> <span className="truncate">{photo ? photo.name : 'Attach Photo'}</span>
+                                <input type="file" accept="image/*" className="hidden" ref={photoInputRef} onChange={e => setPhoto(e.target.files[0] || null)} />
+                            </label>
+                            <button type="submit" disabled={uploading} className="px-6 py-2.5 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 w-full sm:w-auto">
+                                {uploading ? <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" /> : <Plus size={18} className="shrink-0" />} {uploading ? '...' : 'Add Student'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 p-6 rounded-xl shadow-sm border border-emerald-100 w-full md:w-80 shrink-0">
+                    <h2 className="text-lg font-bold text-emerald-900 mb-2 flex items-center gap-2"><Upload className="text-emerald-600" size={20} /> Bulk Import</h2>
+                    <p className="text-sm text-emerald-700 mb-4">Upload a .csv file with columns: <code className="font-bold">Name, RollNo, Batch</code></p>
+                    <label className="flex items-center justify-center gap-2 cursor-pointer text-sm font-bold text-emerald-700 bg-white border-2 border-dashed border-emerald-200 px-4 py-5 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 transition-colors text-center shadow-sm">
+                        <Upload size={20} className="text-emerald-500 shrink-0" /> Select CSV Data
+                        <input type="file" accept=".csv" className="hidden" ref={csvInputRef} onChange={handleCsvUpload} />
+                    </label>
+                </div>
             </div>
+
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <table className="w-full text-left hidden sm:table"><thead className="bg-slate-50 border-b border-slate-200"><tr><th className="px-2 sm:px-6 py-2 sm:py-4 text-[10px] sm:text-xs font-semibold text-slate-500 uppercase">Roll No</th><th className="px-2 sm:px-6 py-2 sm:py-4 text-[10px] sm:text-xs font-semibold text-slate-500 uppercase">Name</th><th className="px-2 sm:px-6 py-2 sm:py-4 text-[10px] sm:text-xs font-semibold text-slate-500 uppercase hidden sm:table-cell">Batch</th><th className="px-2 sm:px-6 py-2 sm:py-4 text-right text-[10px] sm:text-xs font-semibold text-slate-500 uppercase w-10">Action</th></tr></thead><tbody className="divide-y divide-slate-100">{students.map(s => (<tr key={s.id} className="hover:bg-slate-50"><td className="px-2 sm:px-6 py-3 sm:py-4 font-mono text-xs sm:text-sm text-slate-600">{s.rollNumber}</td><td className="px-2 sm:px-6 py-3 sm:py-4 font-medium text-xs sm:text-sm text-slate-800"><div className="truncate w-20 sm:w-auto">{s.name}</div></td><td className="px-2 sm:px-6 py-3 sm:py-4 hidden sm:table-cell"><span className="bg-slate-100 px-2 py-1 rounded text-[10px] sm:text-xs font-bold">{s.batch}</span></td><td className="px-2 sm:px-6 py-3 sm:py-4 text-right select-none w-10 shrink-0"><button onClick={() => onRemove(s.id)} className="text-rose-500 hover:text-rose-700 p-2 hover:bg-rose-50 rounded-lg transition-colors shrink-0"><Trash2 size={18} /></button></td></tr>))}</tbody></table>
+                <table className="w-full text-left hidden sm:table"><thead className="bg-slate-50 border-b border-slate-200"><tr><th className="px-4 py-4 text-xs font-semibold text-slate-500 uppercase w-12 text-center">Pic</th><th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Roll No</th><th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Name</th><th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase">Batch</th><th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase w-10">Action</th></tr></thead><tbody className="divide-y divide-slate-100">{students.map(s => (<tr key={s.id} className="hover:bg-slate-50"><td className="px-4 py-3"><div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden shrink-0 mx-auto shadow-sm">{s.photoURL ? <img src={s.photoURL} alt="Avatar" className="w-full h-full object-cover" /> : <UserCheck className="w-5 h-5 m-1.5 text-slate-400" />}</div></td><td className="px-6 py-4 font-mono text-sm text-slate-600">{s.rollNumber}</td><td className="px-6 py-4 font-medium text-sm text-slate-800"><div className="truncate w-auto">{s.name}</div></td><td className="px-6 py-4"><span className="bg-slate-100 px-2 py-1 rounded text-xs font-bold border border-slate-200 shadow-sm">{s.batch}</span></td><td className="px-6 py-4 text-right select-none w-10 shrink-0"><button onClick={() => onRemove(s.id)} className="text-rose-500 hover:text-white p-2 hover:bg-rose-500 rounded-lg transition-colors shrink-0 active:scale-95"><Trash2 size={18} /></button></td></tr>))}</tbody></table>
                 <div className="block sm:hidden divide-y divide-slate-100">
                     {students.map(s => (
                         <div key={s.id} className="p-4 hover:bg-slate-50 flex justify-between items-center gap-4 transition-colors">
-                            <div className="flex-1 min-w-0">
-                                <h4 className="text-[18px] font-bold text-slate-900 leading-tight mb-2 uppercase break-words">{s.name}</h4>
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-sm font-mono font-medium text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">{s.rollNumber}</span>
-                                    <span className="bg-indigo-50 px-2 py-0.5 rounded-md text-xs font-bold text-indigo-700 border border-indigo-100 shadow-sm">Batch {s.batch}</span>
+                            <div className="flex gap-3 items-center flex-1 min-w-0">
+                                <div className="w-12 h-12 rounded-full bg-slate-200 overflow-hidden shrink-0 shadow-sm border border-slate-300">
+                                    {s.photoURL ? <img src={s.photoURL} alt="Avatar" className="w-full h-full object-cover" /> : <UserCheck className="w-7 h-7 m-2.5 text-slate-400" />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="text-[18px] font-bold text-slate-900 leading-tight mb-2 uppercase break-words">{s.name}</h4>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-sm font-mono font-medium text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md shadow-sm">{s.rollNumber}</span>
+                                        <span className="bg-indigo-50 px-2 py-0.5 rounded-md text-xs font-bold text-indigo-700 border border-indigo-100 shadow-sm">Batch {s.batch}</span>
+                                    </div>
                                 </div>
                             </div>
                             <button onClick={() => onRemove(s.id)} className="text-rose-500 hover:text-white p-3 hover:bg-rose-500 bg-rose-50 rounded-xl transition-colors shrink-0 shadow-sm border border-rose-100 active:scale-95"><Trash2 size={24} /></button>
